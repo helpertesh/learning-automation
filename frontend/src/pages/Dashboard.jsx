@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpen, FileText, ClipboardList, Bell, GraduationCap, Timer, AlertTriangle,
-  BookMarked, Plus, Calendar, CalendarClock, Brain, Sparkles,
+  BookMarked, Plus, Calendar, CalendarClock, Brain, Sparkles, Rocket,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { formatDateTime, relativeDeadline, deadlineColor, formatMinutes } from '../utils/dates';
@@ -44,7 +44,7 @@ export default function Dashboard() {
     );
   }
 
-  const { stats, upcoming, overdue, recentNotes, studyStats, trainingStreak, todayJournal, todayTimetable, quizStats, weakTopics, recentQuizAttempts } = data;
+  const { stats, upcoming, overdue, recentNotes, studyStats, trainingStreak, todayJournal, todayTimetable, quizStats, weakTopics, recentQuizAttempts, todaySkillLesson, skillStreak } = data;
 
   const statCards = [
     { label: 'Units', value: stats.units, icon: BookOpen, color: 'text-indigo-400', to: '/units' },
@@ -56,6 +56,7 @@ export default function Dashboard() {
     { label: 'Alerts', value: stats.unread_notifications, icon: Bell, color: 'text-red-400', to: '/notifications' },
     { label: 'Studied Today', value: formatMinutes(studyStats.today_minutes), icon: Timer, color: 'text-emerald-400', to: '/study' },
     { label: 'Training Streak', value: `${trainingStreak}d`, icon: BookMarked, color: 'text-orange-400', to: '/journal' },
+    { label: 'IT Skills Streak', value: `${skillStreak || 0}d`, icon: Rocket, color: 'text-cyan-400', to: '/daily-skills' },
   ];
 
   return (
@@ -66,6 +67,7 @@ export default function Dashboard() {
           <p className="mt-1 text-slate-500">Overview of your study progress</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link to="/daily-skills" className="btn-secondary text-xs"><Rocket size={14} /> Daily IT Skill</Link>
           <Link to="/journal" className="btn-primary text-xs"><Plus size={14} /> Log Today</Link>
           <Link to="/assignments" className="btn-secondary text-xs"><ClipboardList size={14} /> Add Task</Link>
           <Link to="/calendar" className="btn-secondary text-xs"><Calendar size={14} /> Calendar</Link>
@@ -125,6 +127,26 @@ export default function Dashboard() {
             <p className="text-sm text-indigo-300">You haven't logged today's training yet. Keep your streak going!</p>
           </div>
           <Link to="/journal" className="btn-primary text-xs shrink-0">Write Entry</Link>
+        </div>
+      )}
+
+      {(!todaySkillLesson || !todaySkillLesson.completed) && (
+        <div className="card border-cyan-500/20 bg-cyan-500/5 p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Rocket size={20} className="text-cyan-400" />
+            <div>
+              {todaySkillLesson ? (
+                <p className="text-sm text-cyan-300">
+                  Today's IT lesson: <span className="font-medium">{todaySkillLesson.title}</span> — mark it complete!
+                </p>
+              ) : (
+                <p className="text-sm text-cyan-300">Learn a new IT skill today — cybersecurity, coding, video editing & more.</p>
+              )}
+            </div>
+          </div>
+          <Link to="/daily-skills" className="btn-primary text-xs shrink-0">
+            {todaySkillLesson ? 'Continue' : 'Get Lesson'}
+          </Link>
         </div>
       )}
 

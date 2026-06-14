@@ -12,6 +12,7 @@ import Calendar from './pages/Calendar';
 import Timetable from './pages/Timetable';
 import ExamPrep from './pages/ExamPrep';
 import Quiz from './pages/Quiz';
+import DailySkills from './pages/DailySkills';
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="exam-prep" element={<ExamPrep />} />
         <Route path="study" element={<Study />} />
         <Route path="journal" element={<Journal />} />
+        <Route path="daily-skills" element={<DailySkills />} />
         <Route path="notifications" element={<Notifications />} />
       </Route>
     </Routes>

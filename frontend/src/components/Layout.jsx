@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, FileText, ClipboardList,
   Bell, GraduationCap, Timer, Menu, X, Calendar, BookMarked,
-  CalendarClock, Brain,
+  CalendarClock, Brain, Rocket,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
@@ -18,6 +18,7 @@ const nav = [
   { to: '/timetable', icon: CalendarClock, label: 'Timetable' },
   { to: '/exam-prep', icon: Brain, label: 'Exam Prep' },
   { to: '/study', icon: Timer, label: 'Study Log' },
+  { to: '/daily-skills', icon: Rocket, label: 'Daily IT Skills' },
   { to: '/journal', icon: BookMarked, label: 'Journal' },
   { to: '/notifications', icon: Bell, label: 'Notifications' },
 ];

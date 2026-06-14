@@ -108,4 +108,26 @@ export const api = {
     status: () => request('/ai/status'),
     test: () => request('/ai/test', { method: 'POST' }),
   },
+  skillLearning: {
+    today: () => request('/skill-learning/today'),
+    history: (limit) => request(`/skill-learning/history?limit=${limit || 30}`),
+    categories: () => request('/skill-learning/categories'),
+    skills: () => request('/skill-learning/skills'),
+    saveSkills: (skills) => request('/skill-learning/skills', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skills }),
+    }),
+    streak: () => request('/skill-learning/streak'),
+    generate: (body) => request('/skill-learning/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    complete: (id, body) => request(`/skill-learning/${id}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  },
 };
