@@ -16,6 +16,7 @@ router.get('/status', (_req, res) => {
       quiz_generation: isAIConfigured(),
       quiz_marking: isAIConfigured(),
       exam_prep: isAIConfigured(),
+      daily_skills: isAIConfigured(),
     },
   });
 });

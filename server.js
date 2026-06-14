@@ -31,6 +31,7 @@ async function start() {
   app.use('/api/whatsapp', require('./routes/whatsapp'));
   app.use('/api/ai', require('./routes/ai'));
   app.use('/api/dashboard', require('./routes/dashboard'));
+  app.use('/api/skill-learning', require('./routes/skillLearning'));
 
   app.use((err, _req, res, _next) => {
     console.error(err);

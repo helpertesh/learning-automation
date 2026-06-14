@@ -244,10 +244,42 @@ async function init() {
       message_preview TEXT,
       sent_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS user_it_skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      skill_name TEXT NOT NULL UNIQUE,
+      level TEXT DEFAULT 'intermediate',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_it_lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lesson_date TEXT NOT NULL,
+      skill_category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      overview TEXT,
+      key_concepts_json TEXT,
+      practical_task TEXT,
+      resources_json TEXT,
+      reflection TEXT,
+      completed INTEGER DEFAULT 0,
+      duration_minutes INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(lesson_date)
+    );
   `);
 
   migrateStudySessions();
   migrateQuizQuestions();
+  seedDefaultSkills();
+}
+
+function seedDefaultSkills() {
+  const result = db.exec('SELECT COUNT(*) FROM user_it_skills');
+  const count = result[0]?.values[0]?.[0] || 0;
+  if (count === 0) {
+    exec("INSERT INTO user_it_skills (skill_name, level) VALUES ('Website Design', 'intermediate')");
+  }
 }
 
 function migrateQuizQuestions() {

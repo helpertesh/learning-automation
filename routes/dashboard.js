@@ -92,7 +92,27 @@ router.get('/', (_req, res) => {
     percentage: a.total ? Math.round((a.score / a.total) * 100) : 0,
   }));
 
-  res.json({ stats, upcoming, overdue, recentNotes, studyStats, trainingStreak, todayJournal, todayTimetable, quizStats, weakTopics, recentQuizAttempts });
+  const todaySkillLesson = db.prepare(`
+    SELECT id, title, skill_category, completed FROM daily_it_lessons WHERE lesson_date = date('now')
+  `).get();
+
+  const skillStreakDates = db.prepare(`
+    SELECT DISTINCT lesson_date FROM daily_it_lessons WHERE completed = 1 ORDER BY lesson_date DESC
+  `).all().map((r) => r.lesson_date);
+
+  let skillStreak = 0;
+  for (let i = 0; i < skillStreakDates.length; i++) {
+    const expected = new Date(today);
+    expected.setDate(expected.getDate() - i);
+    if (skillStreakDates[i] === expected.toISOString().slice(0, 10)) skillStreak++;
+    else break;
+  }
+
+  res.json({
+    stats, upcoming, overdue, recentNotes, studyStats, trainingStreak, todayJournal,
+    todayTimetable, quizStats, weakTopics, recentQuizAttempts,
+    todaySkillLesson, skillStreak,
+  });
 });
 
 module.exports = router;
