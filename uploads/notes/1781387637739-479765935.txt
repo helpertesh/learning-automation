@@ -1,0 +1,53 @@
+#include <stdio.h>
+#define MAX 5
+
+char *readyQueue[MAX];
+int front = -1, rear = -1;
+
+// Add process to queue
+void enqueue(char *process) {
+    if (rear == MAX - 1) {
+        printf("Ready Queue Full\n");
+        return;
+    }
+
+    if (front == -1)
+        front = 0;
+
+    readyQueue[++rear] = process;
+}
+
+// Execute process
+void dequeue() {
+    if (front == -1 || front > rear) {
+        printf("Ready Queue Empty\n");
+        return;
+    }
+
+    printf("%s is executing...\n", readyQueue[front]);
+    printf("%s completed.\n\n", readyQueue[front]);
+    front++;
+}
+
+int main() {
+    enqueue("P1");
+    enqueue("P2");
+    enqueue("P3");
+
+    while (front <= rear)
+        dequeue();
+
+    return 0;
+}
+
+
+
+Sample Output
+P1 is executing...
+P1 completed.
+
+P2 is executing...
+P2 completed.
+
+P3 is executing...
+P3 completed

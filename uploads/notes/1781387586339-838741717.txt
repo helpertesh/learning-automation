@@ -1,0 +1,45 @@
+#include <stdio.h>
+#define MAX 5
+
+char *queue[MAX];
+int front = -1, rear = -1;
+
+// Add document to queue
+void enqueue(char *doc) {
+    if (rear == MAX - 1) {
+        printf("Printer Queue Full\n");
+        return;
+    }
+
+    if (front == -1)
+        front = 0;
+
+    queue[++rear] = doc;
+}
+
+// Print next document
+void dequeue() {
+    if (front == -1 || front > rear) {
+        printf("No documents to print\n");
+        return;
+    }
+
+    printf("Printing %s\n", queue[front]);
+    front++;
+}
+
+int main() {
+    enqueue("Doc1");
+    enqueue("Doc2");
+    enqueue("Doc3");
+
+    while (front <= rear)
+        dequeue();
+
+    return 0;
+}
+Sample Output
+
+Printing Doc1
+Printing Doc2
+Printing Doc3
