@@ -3,11 +3,11 @@ const db = require('../db');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { days } = req.query;
   const limit = days ? Number(days) : 60;
 
-  const logs = db.prepare(`
+  const logs = await db.prepare(`
     SELECT t.*, u.name AS unit_name, u.color AS unit_color
     FROM training_logs t
     LEFT JOIN units u ON t.unit_id = u.id
@@ -18,8 +18,8 @@ router.get('/', (req, res) => {
   res.json(logs);
 });
 
-router.get('/today', (_req, res) => {
-  const log = db.prepare(`
+router.get('/today', async (_req, res) => {
+  const log = await db.prepare(`
     SELECT t.*, u.name AS unit_name, u.color AS unit_color
     FROM training_logs t
     LEFT JOIN units u ON t.unit_id = u.id
@@ -29,10 +29,10 @@ router.get('/today', (_req, res) => {
   res.json(log);
 });
 
-router.get('/streak', (_req, res) => {
-  const dates = db.prepare(`
+router.get('/streak', async (_req, res) => {
+  const dates = (await db.prepare(`
     SELECT DISTINCT log_date FROM training_logs ORDER BY log_date DESC
-  `).all().map((r) => r.log_date);
+  `).all()).map((r) => r.log_date);
 
   let streak = 0;
   const today = new Date();
@@ -47,11 +47,11 @@ router.get('/streak', (_req, res) => {
   res.json({ streak_days: streak, total_logs: dates.length });
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { unit_id, log_date, topic, learned, goals, cursor_notes, rating } = req.body;
   if (!topic?.trim()) return res.status(400).json({ error: 'Topic is required' });
 
-  const result = db.prepare(`
+  const result = await db.prepare(`
     INSERT INTO training_logs (unit_id, log_date, topic, learned, goals, cursor_notes, rating)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
@@ -61,10 +61,10 @@ router.post('/', (req, res) => {
     learned?.trim() || null,
     goals?.trim() || null,
     cursor_notes?.trim() || null,
-    rating ?? 3
+    rating ?? 3,
   );
 
-  const log = db.prepare(`
+  const log = await db.prepare(`
     SELECT t.*, u.name AS unit_name, u.color AS unit_color
     FROM training_logs t LEFT JOIN units u ON t.unit_id = u.id
     WHERE t.id = ?
@@ -73,12 +73,12 @@ router.post('/', (req, res) => {
   res.status(201).json(log);
 });
 
-router.put('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM training_logs WHERE id = ?').get(req.params.id);
+router.put('/:id', async (req, res) => {
+  const existing = await db.prepare('SELECT * FROM training_logs WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Log not found' });
 
   const { unit_id, log_date, topic, learned, goals, cursor_notes, rating } = req.body;
-  db.prepare(`
+  await db.prepare(`
     UPDATE training_logs
     SET unit_id = ?, log_date = ?, topic = ?, learned = ?, goals = ?, cursor_notes = ?, rating = ?
     WHERE id = ?
@@ -90,10 +90,10 @@ router.put('/:id', (req, res) => {
     goals?.trim() ?? existing.goals,
     cursor_notes?.trim() ?? existing.cursor_notes,
     rating ?? existing.rating,
-    req.params.id
+    req.params.id,
   );
 
-  const log = db.prepare(`
+  const log = await db.prepare(`
     SELECT t.*, u.name AS unit_name, u.color AS unit_color
     FROM training_logs t LEFT JOIN units u ON t.unit_id = u.id
     WHERE t.id = ?
@@ -102,8 +102,8 @@ router.put('/:id', (req, res) => {
   res.json(log);
 });
 
-router.delete('/:id', (req, res) => {
-  const result = db.prepare('DELETE FROM training_logs WHERE id = ?').run(req.params.id);
+router.delete('/:id', async (req, res) => {
+  const result = await db.prepare('DELETE FROM training_logs WHERE id = ?').run(req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Log not found' });
   res.json({ success: true });
 });

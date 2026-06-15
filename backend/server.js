@@ -14,6 +14,7 @@ app.use(express.json());
 
 async function start() {
   await db.init();
+  console.log(`Database engine: ${db.getEngine()}`);
 
   app.use('/api/units', require('./routes/units'));
   app.use('/api/notes', require('./routes/notes'));
@@ -32,6 +33,7 @@ async function start() {
   app.use('/api/ai', require('./routes/ai'));
   app.use('/api/dashboard', require('./routes/dashboard'));
   app.use('/api/skill-learning', require('./routes/skillLearning'));
+  app.use('/api/health', require('./routes/health'));
 
   app.use((err, _req, res, _next) => {
     console.error(err);

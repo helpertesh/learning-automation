@@ -137,48 +137,49 @@ function getUserSkills() {
   return db.prepare('SELECT * FROM user_it_skills ORDER BY skill_name').all();
 }
 
-function saveUserSkills(skills) {
-  db.exec('DELETE FROM user_it_skills');
+async function saveUserSkills(skills) {
+  await db.exec('DELETE FROM user_it_skills');
   const insert = db.prepare('INSERT INTO user_it_skills (skill_name, level) VALUES (?, ?)');
   for (const s of skills) {
     if (s.skill_name?.trim()) {
-      insert.run(s.skill_name.trim(), s.level || 'beginner');
+      await insert.run(s.skill_name.trim(), s.level || 'beginner');
     }
   }
   return getUserSkills();
 }
 
-function getTodayLesson() {
+async function getTodayLesson() {
   return db.prepare(`
     SELECT * FROM daily_it_lessons WHERE lesson_date = date('now')
   `).get();
 }
 
-function getLessonById(id) {
+async function getLessonById(id) {
   return db.prepare('SELECT * FROM daily_it_lessons WHERE id = ?').get(id);
 }
 
-function getRecentLessons(limit = 30) {
+async function getRecentLessons(limit = 30) {
   return db.prepare(`
     SELECT * FROM daily_it_lessons ORDER BY lesson_date DESC LIMIT ?
   `).all(limit);
 }
 
-function getRecentCategories(days = 14) {
-  return db.prepare(`
+async function getRecentCategories(days = 14) {
+  const rows = await db.prepare(`
     SELECT skill_category FROM daily_it_lessons
     WHERE lesson_date >= date('now', ?)
     ORDER BY lesson_date DESC
-  `).all(`-${days} days`).map((r) => r.skill_category);
+  `).all(`-${days} days`);
+  return rows.map((r) => r.skill_category);
 }
 
-function pickCategory(requestedCategory) {
+async function pickCategory(requestedCategory) {
   if (requestedCategory && FALLBACK_LESSONS[requestedCategory]) {
     return requestedCategory;
   }
 
-  const userSkills = getUserSkills().map((s) => s.skill_name.toLowerCase());
-  const recent = getRecentCategories();
+  const userSkills = (await getUserSkills()).map((s) => s.skill_name.toLowerCase());
+  const recent = await getRecentCategories();
   const candidates = SKILL_CATEGORIES.map((c) => c.id);
 
   const skipWebDev = userSkills.some((s) =>
@@ -207,14 +208,14 @@ function parseLessonRow(row) {
 }
 
 async function generateLesson({ category, forceRegenerate = false } = {}) {
-  const existing = getTodayLesson();
+  const existing = await getTodayLesson();
   if (existing && !forceRegenerate) {
     return parseLessonRow(existing);
   }
 
-  const skillCategory = pickCategory(category);
-  const userSkills = getUserSkills();
-  const recentLessons = getRecentLessons(7);
+  const skillCategory = await pickCategory(category);
+  const userSkills = await getUserSkills();
+  const recentLessons = await getRecentLessons(7);
   const categoryMeta = SKILL_CATEGORIES.find((c) => c.id === skillCategory);
 
   let lesson;
@@ -238,10 +239,10 @@ async function generateLesson({ category, forceRegenerate = false } = {}) {
   const today = new Date().toISOString().slice(0, 10);
 
   if (existing && forceRegenerate) {
-    db.prepare(`
+    await db.prepare(`
       UPDATE daily_it_lessons
       SET skill_category = ?, title = ?, overview = ?, key_concepts_json = ?,
-          practical_task = ?, resources_json = ?, reflection = NULL, completed = 0, duration_minutes = NULL
+          practical_task = ?, resources_json = ?, reflection = NULL, completed = false, duration_minutes = NULL
       WHERE id = ?
     `).run(
       lesson.skill_category,
@@ -252,10 +253,10 @@ async function generateLesson({ category, forceRegenerate = false } = {}) {
       JSON.stringify(lesson.resources || []),
       existing.id,
     );
-    return parseLessonRow(getLessonById(existing.id));
+    return parseLessonRow(await getLessonById(existing.id));
   }
 
-  const result = db.prepare(`
+  const result = await db.prepare(`
     INSERT INTO daily_it_lessons
     (lesson_date, skill_category, title, overview, key_concepts_json, practical_task, resources_json)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -269,7 +270,7 @@ async function generateLesson({ category, forceRegenerate = false } = {}) {
     JSON.stringify(lesson.resources || []),
   );
 
-  return parseLessonRow(getLessonById(result.lastInsertRowid));
+  return parseLessonRow(await getLessonById(result.lastInsertRowid));
 }
 
 async function generateWithAI(category, categoryMeta, userSkills, recentLessons) {
@@ -313,13 +314,13 @@ Focus on practical, current, in-demand skills. Be specific and actionable.`;
   };
 }
 
-function completeLesson(id, { reflection, duration_minutes } = {}) {
-  const lesson = getLessonById(id);
+async function completeLesson(id, { reflection, duration_minutes } = {}) {
+  const lesson = await getLessonById(id);
   if (!lesson) return null;
 
-  db.prepare(`
+  await db.prepare(`
     UPDATE daily_it_lessons
-    SET completed = 1, reflection = ?, duration_minutes = ?
+    SET completed = true, reflection = ?, duration_minutes = ?
     WHERE id = ?
   `).run(
     reflection?.trim() || null,
@@ -327,13 +328,13 @@ function completeLesson(id, { reflection, duration_minutes } = {}) {
     id,
   );
 
-  return parseLessonRow(getLessonById(id));
+  return parseLessonRow(await getLessonById(id));
 }
 
-function getStreak() {
-  const dates = db.prepare(`
+async function getStreak() {
+  const dates = (await db.prepare(`
     SELECT DISTINCT lesson_date FROM daily_it_lessons WHERE completed = 1 ORDER BY lesson_date DESC
-  `).all().map((r) => r.lesson_date);
+  `).all()).map((r) => String(r.lesson_date).slice(0, 10));
 
   let streak = 0;
   const today = new Date();
@@ -344,8 +345,8 @@ function getStreak() {
     else break;
   }
 
-  const total = db.prepare('SELECT COUNT(*) AS count FROM daily_it_lessons WHERE completed = 1').get().count;
-  const categoriesExplored = db.prepare('SELECT COUNT(DISTINCT skill_category) AS count FROM daily_it_lessons').get().count;
+  const total = (await db.prepare('SELECT COUNT(*) AS count FROM daily_it_lessons WHERE completed = 1').get()).count;
+  const categoriesExplored = (await db.prepare('SELECT COUNT(DISTINCT skill_category) AS count FROM daily_it_lessons').get()).count;
 
   return { streak_days: streak, total_completed: total, categories_explored: categoriesExplored };
 }
@@ -354,8 +355,8 @@ module.exports = {
   getCategories,
   getUserSkills,
   saveUserSkills,
-  getTodayLesson: () => parseLessonRow(getTodayLesson()),
-  getRecentLessons: (limit) => getRecentLessons(limit).map(parseLessonRow),
+  getTodayLesson: async () => parseLessonRow(await getTodayLesson()),
+  getRecentLessons: async (limit) => (await getRecentLessons(limit)).map(parseLessonRow),
   generateLesson,
   completeLesson,
   getStreak,

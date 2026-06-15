@@ -8,53 +8,53 @@ function formatMinutes(m) {
   return r ? `${h}h ${r}m` : `${h}h`;
 }
 
-function buildDailyDigest() {
+async function buildDailyDigest() {
   const lines = ['📚 *StudyFlow Daily Update*', ''];
 
-  const overdue = db.prepare(`
+  const overdue = await db.prepare(`
     SELECT a.title, a.deadline, u.name AS unit_name
     FROM assignments a JOIN units u ON a.unit_id = u.id
     WHERE a.status != 'completed' AND a.deadline < datetime('now')
     ORDER BY a.deadline ASC LIMIT 5
   `).all();
 
-  const dueToday = db.prepare(`
+  const dueToday = await db.prepare(`
     SELECT a.title, u.name AS unit_name
     FROM assignments a JOIN units u ON a.unit_id = u.id
     WHERE a.status != 'completed' AND date(a.deadline) = date('now')
   `).all();
 
-  const upcoming = db.prepare(`
+  const upcoming = await db.prepare(`
     SELECT a.title, a.deadline, u.name AS unit_name
     FROM assignments a JOIN units u ON a.unit_id = u.id
     WHERE a.status != 'completed' AND a.deadline >= datetime('now')
     ORDER BY a.deadline ASC LIMIT 5
   `).all();
 
-  const weakTopics = db.prepare(`
+  const weakTopics = await db.prepare(`
     SELECT tw.topic_name, u.name AS unit_name, tw.weakness_score
     FROM topic_weakness tw JOIN units u ON tw.unit_id = u.id
     ORDER BY tw.weakness_score DESC LIMIT 5
   `).all();
 
-  const studyToday = db.prepare(`
+  const studyToday = (await db.prepare(`
     SELECT COALESCE(SUM(duration_minutes), 0) AS minutes
     FROM study_sessions WHERE date(studied_at) = date('now')
-  `).get().minutes;
+  `).get()).minutes;
 
-  const unreadAlerts = db.prepare(`
+  const unreadAlerts = (await db.prepare(`
     SELECT COUNT(*) AS count FROM notifications WHERE is_read = 0
-  `).get().count;
+  `).get()).count;
 
-  const todayTimetable = db.prepare(`
+  const todayTimetable = await db.prepare(`
     SELECT t.start_time, t.end_time, u.name AS unit_name, t.label
     FROM timetable_slots t LEFT JOIN units u ON t.unit_id = u.id
     WHERE t.day_of_week = ? ORDER BY t.start_time
   `).all(new Date().getDay());
 
-  const journalToday = db.prepare(`
+  const journalToday = (await db.prepare(`
     SELECT COUNT(*) AS count FROM training_logs WHERE log_date = date('now')
-  `).get().count;
+  `).get()).count;
 
   if (overdue.length) {
     lines.push(`🚨 *OVERDUE (${overdue.length})*`);
@@ -124,7 +124,7 @@ async function sendDailyDigest() {
   if (!isAnyConfigured()) return { sent: false, reason: 'not configured' };
 
   const today = new Date().toISOString().slice(0, 10);
-  const text = buildDailyDigest();
+  const text = await buildDailyDigest();
   return sendNotification(text, { messageKey: `daily-digest:${today}` });
 }
 

@@ -4,12 +4,12 @@ const { generateQuiz, getQuiz, markQuiz } = require('../services/noteAi');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { unit_id, note_id } = req.query;
   let quizzes;
 
   if (note_id) {
-    quizzes = db.prepare(`
+    quizzes = await db.prepare(`
       SELECT q.*, n.title AS note_title, u.name AS unit_name, u.color AS unit_color,
         (SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = q.id) AS question_count
       FROM quizzes q
@@ -18,7 +18,7 @@ router.get('/', (req, res) => {
       WHERE q.note_id = ? ORDER BY q.created_at DESC
     `).all(note_id);
   } else if (unit_id) {
-    quizzes = db.prepare(`
+    quizzes = await db.prepare(`
       SELECT q.*, n.title AS note_title, u.name AS unit_name, u.color AS unit_color,
         (SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = q.id) AS question_count
       FROM quizzes q
@@ -27,7 +27,7 @@ router.get('/', (req, res) => {
       WHERE q.unit_id = ? ORDER BY q.created_at DESC
     `).all(unit_id);
   } else {
-    quizzes = db.prepare(`
+    quizzes = await db.prepare(`
       SELECT q.*, n.title AS note_title, u.name AS unit_name, u.color AS unit_color,
         (SELECT COUNT(*) FROM quiz_questions WHERE quiz_id = q.id) AS question_count
       FROM quizzes q
@@ -51,17 +51,17 @@ router.post('/generate', async (req, res, next) => {
   }
 });
 
-router.get('/weak-topics', (req, res) => {
+router.get('/weak-topics', async (req, res) => {
   const { unit_id } = req.query;
   let topics;
   if (unit_id) {
-    topics = db.prepare(`
+    topics = await db.prepare(`
       SELECT tw.*, u.name AS unit_name, u.color AS unit_color
       FROM topic_weakness tw JOIN units u ON tw.unit_id = u.id
       WHERE tw.unit_id = ? ORDER BY tw.weakness_score DESC
     `).all(unit_id);
   } else {
-    topics = db.prepare(`
+    topics = await db.prepare(`
       SELECT tw.*, u.name AS unit_name, u.color AS unit_color
       FROM topic_weakness tw JOIN units u ON tw.unit_id = u.id
       ORDER BY tw.weakness_score DESC LIMIT 20
@@ -70,8 +70,8 @@ router.get('/weak-topics', (req, res) => {
   res.json(topics);
 });
 
-router.get('/:id', (req, res) => {
-  const quiz = getQuiz(Number(req.params.id));
+router.get('/:id', async (req, res) => {
+  const quiz = await getQuiz(Number(req.params.id));
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
   res.json(quiz);
 });
@@ -87,8 +87,8 @@ router.post('/:id/submit', async (req, res, next) => {
   }
 });
 
-router.get('/:id/attempts', (req, res) => {
-  const attempts = db.prepare(`
+router.get('/:id/attempts', async (req, res) => {
+  const attempts = await db.prepare(`
     SELECT * FROM quiz_attempts WHERE quiz_id = ? ORDER BY completed_at DESC
   `).all(Number(req.params.id));
   res.json(attempts.map((a) => ({

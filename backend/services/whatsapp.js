@@ -13,14 +13,15 @@ function hashKey(key) {
   return crypto.createHash('sha256').update(key).digest('hex').slice(0, 32);
 }
 
-function alreadySent(messageKey) {
-  const row = db.prepare('SELECT id FROM whatsapp_log WHERE message_key = ?').get(hashKey(messageKey));
+async function alreadySent(messageKey) {
+  const row = await db.prepare('SELECT id FROM whatsapp_log WHERE message_key = ?').get(hashKey(messageKey));
   return !!row;
 }
 
-function logSent(messageKey, preview) {
-  db.prepare(`
-    INSERT OR IGNORE INTO whatsapp_log (message_key, message_preview) VALUES (?, ?)
+async function logSent(messageKey, preview) {
+  await db.prepare(`
+    INSERT INTO whatsapp_log (message_key, message_preview) VALUES (?, ?)
+    ON CONFLICT (message_key) DO NOTHING
   `).run(hashKey(messageKey), (preview || '').slice(0, 200));
 }
 
@@ -67,7 +68,7 @@ async function sendWhatsApp(text, { messageKey, skipDedup = false } = {}) {
   if (!isConfigured()) return { sent: false, reason: 'WhatsApp not configured' };
 
   const key = messageKey || text.slice(0, 100);
-  if (!skipDedup && alreadySent(key)) return { sent: false, reason: 'duplicate' };
+  if (!skipDedup && await alreadySent(key)) return { sent: false, reason: 'duplicate' };
 
   const provider = getProvider();
   let result;
@@ -77,7 +78,7 @@ async function sendWhatsApp(text, { messageKey, skipDedup = false } = {}) {
     result = await sendViaCallMeBot(text);
   }
 
-  logSent(key, text);
+  await logSent(key, text);
   return { sent: true, ...result };
 }
 

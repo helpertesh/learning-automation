@@ -16,8 +16,8 @@ router.post('/analyze', async (req, res) => {
   }
 });
 
-router.get('/:unitId/history', (req, res) => {
-  const rows = db.prepare(`
+router.get('/:unitId/history', async (req, res) => {
+  const rows = await db.prepare(`
     SELECT id, unit_id, paper_id, created_at FROM exam_analyses
     WHERE unit_id = ? ORDER BY created_at DESC LIMIT 10
   `).all(req.params.unitId);
@@ -25,10 +25,10 @@ router.get('/:unitId/history', (req, res) => {
   res.json(rows);
 });
 
-router.get('/:unitId', (req, res) => {
+router.get('/:unitId', async (req, res) => {
   const unitId = req.params.unitId;
 
-  const unit = db.prepare(`
+  const unit = await db.prepare(`
     SELECT u.*,
       (SELECT COUNT(*) FROM topics WHERE unit_id = u.id) AS total_topics,
       (SELECT COUNT(*) FROM topics WHERE unit_id = u.id AND is_covered = 1) AS covered_topics,
@@ -39,7 +39,7 @@ router.get('/:unitId', (req, res) => {
 
   if (!unit) return res.status(404).json({ error: 'Unit not found' });
 
-  const latest = db.prepare(`
+  const latest = await db.prepare(`
     SELECT * FROM exam_analyses WHERE unit_id = ? ORDER BY created_at DESC LIMIT 1
   `).get(unitId);
 

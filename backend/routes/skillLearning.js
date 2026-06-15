@@ -17,29 +17,49 @@ router.get('/categories', (_req, res) => {
   res.json(getCategories());
 });
 
-router.get('/skills', (_req, res) => {
-  res.json(getUserSkills());
-});
-
-router.put('/skills', (req, res) => {
-  const { skills } = req.body;
-  if (!Array.isArray(skills)) {
-    return res.status(400).json({ error: 'skills must be an array' });
+router.get('/skills', async (_req, res, next) => {
+  try {
+    res.json(await getUserSkills());
+  } catch (err) {
+    next(err);
   }
-  res.json(saveUserSkills(skills));
 });
 
-router.get('/today', (_req, res) => {
-  res.json(getTodayLesson());
+router.put('/skills', async (req, res, next) => {
+  try {
+    const { skills } = req.body;
+    if (!Array.isArray(skills)) {
+      return res.status(400).json({ error: 'skills must be an array' });
+    }
+    res.json(await saveUserSkills(skills));
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.get('/history', (req, res) => {
-  const limit = Number(req.query.limit) || 30;
-  res.json(getRecentLessons(limit));
+router.get('/today', async (_req, res, next) => {
+  try {
+    res.json(await getTodayLesson());
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.get('/streak', (_req, res) => {
-  res.json(getStreak());
+router.get('/history', async (req, res, next) => {
+  try {
+    const limit = Number(req.query.limit) || 30;
+    res.json(await getRecentLessons(limit));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/streak', async (_req, res, next) => {
+  try {
+    res.json(await getStreak());
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/generate', async (req, res, next) => {
@@ -52,10 +72,14 @@ router.post('/generate', async (req, res, next) => {
   }
 });
 
-router.patch('/:id/complete', (req, res) => {
-  const lesson = completeLesson(Number(req.params.id), req.body);
-  if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
-  res.json(lesson);
+router.patch('/:id/complete', async (req, res, next) => {
+  try {
+    const lesson = await completeLesson(Number(req.params.id), req.body);
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json(lesson);
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

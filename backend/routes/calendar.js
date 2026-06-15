@@ -4,9 +4,9 @@ const { generateDeadlineNotifications } = require('../services/notifications');
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const { month } = req.query;
-  generateDeadlineNotifications();
+  await generateDeadlineNotifications();
 
   let start, end;
   if (month && /^\d{4}-\d{2}$/.test(month)) {
@@ -23,21 +23,21 @@ router.get('/', (req, res) => {
     end = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
   }
 
-  const assignments = db.prepare(`
+  const assignments = await db.prepare(`
     SELECT a.*, u.name AS unit_name, u.color AS unit_color
     FROM assignments a JOIN units u ON a.unit_id = u.id
     WHERE date(a.deadline) BETWEEN ? AND ?
     ORDER BY a.deadline ASC
   `).all(start, end);
 
-  const studySessions = db.prepare(`
+  const studySessions = await db.prepare(`
     SELECT date(studied_at) AS day, SUM(duration_minutes) AS minutes
     FROM study_sessions
     WHERE date(studied_at) BETWEEN ? AND ?
     GROUP BY date(studied_at)
   `).all(start, end);
 
-  const trainingDays = db.prepare(`
+  const trainingDays = await db.prepare(`
     SELECT DISTINCT log_date AS day FROM training_logs
     WHERE log_date BETWEEN ? AND ?
   `).all(start, end);

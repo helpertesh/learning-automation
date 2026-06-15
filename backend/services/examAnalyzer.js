@@ -1,9 +1,7 @@
-const path = require('path');
 const db = require('../db');
+const storage = require('./storage');
 const { extractText, normalizeText, splitIntoChunks } = require('./textExtractor');
 const { chatJSON, isAIConfigured, getLastAIError } = require('./openai');
-
-const UPLOADS = path.join(__dirname, '..', 'uploads');
 
 function tokenize(text) {
   return text.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
@@ -86,12 +84,12 @@ function findSolutionInNotes(topicName, notesTexts) {
 }
 
 async function loadNotesTexts(unitId) {
-  const notes = db.prepare('SELECT * FROM notes WHERE unit_id = ?').all(unitId);
+  const notes = await db.prepare('SELECT * FROM notes WHERE unit_id = ?').all(unitId);
   const results = [];
 
   for (const note of notes) {
-    const filePath = path.join(UPLOADS, 'notes', note.filename);
     try {
+      const filePath = await storage.getReadablePath(storage.BUCKETS.NOTES, note.filename);
       const text = normalizeText(await extractText(filePath));
       if (text) results.push({ id: note.id, title: note.title, text });
     } catch {
@@ -102,7 +100,7 @@ async function loadNotesTexts(unitId) {
 }
 
 async function loadPaperText(paper) {
-  const filePath = path.join(UPLOADS, 'past-papers', paper.filename);
+  const filePath = await storage.getReadablePath(storage.BUCKETS.PAPERS, paper.filename);
   return normalizeText(await extractText(filePath));
 }
 
@@ -221,7 +219,7 @@ function analyzeRuleBased(unit, coveredTopics, notesTexts, papersWithText) {
 }
 
 async function analyzeUnit(unitId, paperId = null) {
-  const unit = db.prepare(`
+  const unit = await db.prepare(`
     SELECT u.*,
       (SELECT COUNT(*) FROM topics WHERE unit_id = u.id) AS total_topics,
       (SELECT COUNT(*) FROM topics WHERE unit_id = u.id AND is_covered = 1) AS covered_topics
@@ -230,7 +228,7 @@ async function analyzeUnit(unitId, paperId = null) {
 
   if (!unit) throw new Error('Unit not found');
 
-  const coveredTopics = db.prepare(`
+  const coveredTopics = await db.prepare(`
     SELECT * FROM topics WHERE unit_id = ? AND is_covered = 1 ORDER BY sort_order, name
   `).all(unitId);
 
@@ -240,9 +238,9 @@ async function analyzeUnit(unitId, paperId = null) {
 
   let papers;
   if (paperId) {
-    papers = db.prepare('SELECT * FROM past_papers WHERE id = ? AND unit_id = ?').all(paperId, unitId);
+    papers = await db.prepare('SELECT * FROM past_papers WHERE id = ? AND unit_id = ?').all(paperId, unitId);
   } else {
-    papers = db.prepare('SELECT * FROM past_papers WHERE unit_id = ? ORDER BY year DESC').all(unitId);
+    papers = await db.prepare('SELECT * FROM past_papers WHERE unit_id = ? ORDER BY year DESC').all(unitId);
   }
 
   const notesTexts = await loadNotesTexts(unitId);
@@ -282,7 +280,7 @@ async function analyzeUnit(unitId, paperId = null) {
     analyzed_at: new Date().toISOString(),
   };
 
-  const result = db.prepare(`
+  const result = await db.prepare(`
     INSERT INTO exam_analyses (unit_id, paper_id, analysis_json) VALUES (?, ?, ?)
   `).run(unitId, paperId || null, JSON.stringify(analysis));
 
