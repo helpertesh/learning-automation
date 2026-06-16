@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db');
+const storage = require('./services/storage');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,6 +16,16 @@ app.use(express.json());
 async function start() {
   await db.init();
   console.log(`Database engine: ${db.getEngine()}`);
+  if (storage.isCloud()) {
+    const rawUrl = process.env.SUPABASE_URL?.trim() || '';
+    const normalizedUrl = storage.getSupabaseUrl();
+    console.log(`Supabase Storage: ${normalizedUrl}`);
+    if (rawUrl !== normalizedUrl) {
+      console.warn('SUPABASE_URL was normalized — use the base project URL without /rest/v1 or /storage/v1');
+    }
+  } else {
+    console.log('Supabase Storage: local uploads folder');
+  }
 
   app.use('/api/units', require('./routes/units'));
   app.use('/api/notes', require('./routes/notes'));

@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { getPostgresUrl, getPostgresUrlSource } = require('./config');
 
 let pool;
 
@@ -58,17 +59,51 @@ async function exec(sql) {
   }
 }
 
-async function init() {
-  const url = process.env.DATABASE_URL?.trim();
-  if (!url) throw new Error('DATABASE_URL is required for Postgres');
+function describeConnection(url) {
+  try {
+    const u = new URL(url);
+    const user = decodeURIComponent(u.username || '');
+    const host = u.hostname;
+    const port = u.port || '5432';
+    const pooler = host.includes('pooler.supabase.com');
+    const hints = [];
+    if (pooler && user === 'postgres') {
+      hints.push('pooler host requires username postgres.[project-ref], not just "postgres"');
+    }
+    if (u.password === '[YOUR-PASSWORD]' || !u.password) {
+      hints.push('replace [YOUR-PASSWORD] with your Supabase database password');
+    }
+    return { user, host, port, pooler, hints };
+  } catch {
+    return { user: '?', host: '?', port: '?', pooler: false, hints: ['DATABASE_URL is not a valid postgresql:// URI'] };
+  }
+}
 
+async function init() {
+  const url = getPostgresUrl();
+  if (!url) throw new Error('SUPABASE_DATABASE_URL or DATABASE_URL is required for Postgres');
+
+  const info = describeConnection(url);
+  const source = getPostgresUrlSource();
   pool = new Pool({
     connectionString: url,
     ssl: url.includes('supabase') ? { rejectUnauthorized: false } : undefined,
   });
 
-  await pool.query('SELECT 1');
-  console.log('Database: Supabase Postgres connected');
+  try {
+    await pool.query('SELECT 1');
+  } catch (err) {
+    if (err.code === '28P01') {
+      const hint = info.hints.length
+        ? info.hints.join('; ')
+        : 'reset the database password in Supabase → Settings → Database, then update DATABASE_URL on Render';
+      throw new Error(
+        `Postgres login failed for user "${info.user}" @ ${info.host}:${info.port}. ${hint}`
+      );
+    }
+    throw err;
+  }
+  console.log(`Database: Supabase Postgres connected (${info.host}:${info.port}, via ${source})`);
 }
 
 function getEngine() {

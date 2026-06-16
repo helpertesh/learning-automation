@@ -5,6 +5,7 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const storage = require('../services/storage');
+const { getPostgresUrl } = require('../db/config');
 
 async function testSqlite() {
   const dbPath = path.join(__dirname, '..', 'data', 'study.db');
@@ -20,8 +21,8 @@ async function testSqlite() {
 }
 
 async function testPostgres() {
-  const url = process.env.DATABASE_URL?.trim();
-  if (!url) return { ok: null, configured: false, message: 'DATABASE_URL not set' };
+  const url = getPostgresUrl();
+  if (!url) return { ok: null, configured: false, message: 'SUPABASE_DATABASE_URL / DATABASE_URL not set' };
 
   const pool = new Pool({
     connectionString: url,
@@ -40,7 +41,7 @@ async function testPostgres() {
 }
 
 async function main() {
-  const usePg = !!process.env.DATABASE_URL?.trim();
+  const usePg = !!getPostgresUrl();
   const engine = usePg ? 'postgres' : 'sqlite';
 
   console.log(`Database mode: ${engine}\n`);
@@ -53,7 +54,7 @@ async function main() {
   } else {
     const sq = await testSqlite();
     console.log('Local SQLite:', sq.ok ? 'OK' : 'FAILED', sq.counts || sq.message);
-    console.log('\nTip: Add DATABASE_URL to .env to use Supabase');
+    console.log('\nTip: Add SUPABASE_DATABASE_URL to .env to use Supabase');
   }
 
   process.exit(0);

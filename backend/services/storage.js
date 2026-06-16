@@ -13,12 +13,98 @@ function isCloud() {
   return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function normalizeSupabaseUrl(rawUrl) {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) throw new Error('SUPABASE_URL is required');
+  let url;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    throw new Error(`SUPABASE_URL is invalid: "${trimmed}"`);
+  }
+  // Supabase client expects the project base URL, not /rest/v1 or /storage/v1.
+  return `${url.protocol}//${url.host}`;
+}
+
+function sanitizeObjectKey(key) {
+  const raw = String(key ?? '');
+  // Supabase Storage expects a relative path (no drive letters, no leading slash).
+  const normalizedSlashes = raw.replace(/\\/g, '/').replace(/^\/+/, '');
+  const withoutTraversal = normalizedSlashes
+    .split('/')
+    .filter((seg) => seg && seg !== '.' && seg !== '..')
+    .join('/');
+
+  // Remove characters that commonly break URLs/paths in object keys.
+  return withoutTraversal.replace(/[\u0000-\u001F\u007F?#]+/g, '_');
+}
+
+function getSupabaseUrl() {
+  return normalizeSupabaseUrl(process.env.SUPABASE_URL);
+}
+
 function getSupabase() {
   if (!isCloud()) return null;
   return createClient(
-    process.env.SUPABASE_URL.trim(),
+    getSupabaseUrl(),
     process.env.SUPABASE_SERVICE_ROLE_KEY.trim(),
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+    },
   );
+}
+
+async function getStorageHealth() {
+  if (!isCloud()) {
+    return { ok: true, mode: 'local' };
+  }
+
+  const rawUrl = process.env.SUPABASE_URL?.trim() || '';
+  const normalizedUrl = getSupabaseUrl();
+  const supabase = getSupabase();
+  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+
+  if (listError) {
+    return {
+      ok: false,
+      mode: 'supabase',
+      rawUrl,
+      normalizedUrl,
+      error: listError.message,
+    };
+  }
+
+  const bucketNames = (buckets || []).map((b) => b.name);
+  const missingBuckets = Object.values(BUCKETS).filter((name) => !bucketNames.includes(name));
+  const testKey = `${Date.now()}-healthcheck.txt`;
+
+  try {
+    await uploadFile(BUCKETS.NOTES, testKey, Buffer.from('ok'), 'text/plain');
+    await deleteFile(BUCKETS.NOTES, testKey);
+  } catch (err) {
+    return {
+      ok: false,
+      mode: 'supabase',
+      rawUrl,
+      normalizedUrl,
+      buckets: bucketNames,
+      missingBuckets,
+      error: err.message,
+      hint: rawUrl !== normalizedUrl
+        ? 'SUPABASE_URL should be https://<project>.supabase.co (no /rest/v1 or /storage/v1)'
+        : undefined,
+    };
+  }
+
+  return {
+    ok: true,
+    mode: 'supabase',
+    rawUrl,
+    normalizedUrl,
+    buckets: bucketNames,
+    missingBuckets,
+    urlNormalized: rawUrl !== normalizedUrl,
+  };
 }
 
 function localPath(bucket, filename) {
@@ -28,7 +114,8 @@ function localPath(bucket, filename) {
 async function uploadFile(bucket, filename, buffer, contentType) {
   if (isCloud()) {
     const supabase = getSupabase();
-    const { error } = await supabase.storage.from(bucket).upload(filename, buffer, {
+    const objectKey = sanitizeObjectKey(filename);
+    const { error } = await supabase.storage.from(bucket).upload(objectKey, buffer, {
       contentType: contentType || 'application/octet-stream',
       upsert: true,
     });
@@ -43,7 +130,8 @@ async function uploadFile(bucket, filename, buffer, contentType) {
 async function downloadBuffer(bucket, filename) {
   if (isCloud()) {
     const supabase = getSupabase();
-    const { data, error } = await supabase.storage.from(bucket).download(filename);
+    const objectKey = sanitizeObjectKey(filename);
+    const { data, error } = await supabase.storage.from(bucket).download(objectKey);
     if (error) throw new Error(`Storage download failed: ${error.message}`);
     return Buffer.from(await data.arrayBuffer());
   }
@@ -55,7 +143,8 @@ async function downloadBuffer(bucket, filename) {
 async function deleteFile(bucket, filename) {
   if (isCloud()) {
     const supabase = getSupabase();
-    const { error } = await supabase.storage.from(bucket).remove([filename]);
+    const objectKey = sanitizeObjectKey(filename);
+    const { error } = await supabase.storage.from(bucket).remove([objectKey]);
     if (error) throw new Error(`Storage delete failed: ${error.message}`);
     return;
   }
@@ -82,6 +171,8 @@ async function resolveFilePath(bucket, filename) {
 module.exports = {
   BUCKETS,
   isCloud,
+  getSupabaseUrl,
+  getStorageHealth,
   uploadFile,
   downloadBuffer,
   deleteFile,

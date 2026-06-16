@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * One-time migration: local SQLite (study.db) + uploads → Supabase Postgres + Storage
- * Requires DATABASE_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY in backend/.env
+ * Requires SUPABASE_DATABASE_URL (or DATABASE_URL), SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY in backend/.env
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 
@@ -10,6 +10,7 @@ const path = require('path');
 const initSqlJs = require('sql.js');
 const { Pool } = require('pg');
 const storage = require('../services/storage');
+const { getPostgresUrl } = require('../db/config');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'study.db');
 const UPLOADS = path.join(__dirname, '..', 'uploads');
@@ -110,9 +111,9 @@ async function migrateFiles(subdir, bucket) {
 }
 
 async function main() {
-  const url = process.env.DATABASE_URL?.trim();
+  const url = getPostgresUrl();
   if (!url) {
-    console.error('DATABASE_URL missing in backend/.env');
+    console.error('SUPABASE_DATABASE_URL (or DATABASE_URL) missing in backend/.env');
     process.exit(1);
   }
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {

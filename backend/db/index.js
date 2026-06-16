@@ -1,4 +1,5 @@
-const usePostgres = !!process.env.DATABASE_URL?.trim();
+const { getPostgresUrl } = require('./config');
+const usePostgres = !!getPostgresUrl();
 const driver = usePostgres ? require('./postgres') : require('./sqlite');
 
 async function init() {
