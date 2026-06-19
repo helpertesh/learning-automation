@@ -278,7 +278,7 @@ export default function Notes() {
             <input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Defaults to filename" />
           </div>
           <FileUpload onChange={setFile} />
-          <p className="text-xs text-slate-500">All file types accepted. PDF, DOCX, PPTX, TXT, or MD work best for AI summary and quizzes.</p>
+          <p className="text-xs text-slate-500">All file types accepted. PDF, DOCX, PPT, PPTX, TXT, or MD work best for AI summary and quizzes.</p>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setModal(false)} className="btn-secondary">Cancel</button>
             <button type="submit" disabled={uploading} className="btn-primary">{uploading ? 'Uploading...' : 'Upload'}</button>

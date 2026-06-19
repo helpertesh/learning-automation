@@ -35,7 +35,7 @@ async function loadNoteText(note) {
   const filePath = await storage.getReadablePath(storage.BUCKETS.NOTES, note.filename);
   const text = normalizeText(await extractText(filePath));
   if (!text) {
-    throw new Error('Could not extract text from this file. Try PDF, DOCX, PPTX, TXT, or MD.');
+    throw new Error('Could not extract text from this file. Try PDF, DOCX, PPT, PPTX, TXT, or MD.');
   }
   return text;
 }
@@ -44,7 +44,7 @@ async function loadNoteWithPages(note) {
   const filePath = await storage.getReadablePath(storage.BUCKETS.NOTES, note.filename);
   const extracted = await extractTextWithPages(filePath);
   if (!extracted.text) {
-    throw new Error('Could not extract text from this file. Try PDF, DOCX, PPTX, TXT, or MD.');
+    throw new Error('Could not extract text from this file. Try PDF, DOCX, PPT, PPTX, TXT, or MD.');
   }
   return { ...note, ...extracted };
 }

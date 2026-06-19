@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const mammoth = require('mammoth');
 const JSZip = require('jszip');
+const PPT = require('ppt-to-text');
 
 async function extractFromPdf(filePath) {
   const { text } = await extractFromPdfWithPages(filePath);
@@ -55,6 +56,11 @@ async function extractFromDocx(filePath) {
 }
 
 async function extractFromPptx(filePath) {
+  const { text } = await extractFromPptxWithPages(filePath);
+  return text;
+}
+
+async function extractFromPptxWithPages(filePath) {
   const data = fs.readFileSync(filePath);
   const zip = await JSZip.loadAsync(data);
   const slideNames = Object.keys(zip.files)
@@ -65,21 +71,51 @@ async function extractFromPptx(filePath) {
       return na - nb;
     });
 
-  let fullText = '';
+  const pages = [];
   for (const name of slideNames) {
     const xml = await zip.files[name].async('text');
-    const slideNum = name.match(/slide(\d+)/i)[1];
+    const slideNum = parseInt(name.match(/slide(\d+)/i)[1], 10);
     const parts = [];
     const re = /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g;
     let match;
     while ((match = re.exec(xml)) !== null) {
       parts.push(match[1]);
     }
-    if (parts.length) {
-      fullText += `\n--- Slide ${slideNum} ---\n${parts.join(' ')}\n`;
+    const slideText = normalizeText(parts.join(' '));
+    if (slideText) {
+      pages.push({ page: slideNum, text: slideText });
     }
   }
-  return fullText;
+
+  const fullText = pages.map((p) => p.text).join(' ');
+  return {
+    text: normalizeText(fullText),
+    pages,
+    totalPages: pages.length,
+  };
+}
+
+function extractFromPpt(filePath) {
+  const { text } = extractFromPptWithPages(filePath);
+  return text;
+}
+
+function extractFromPptWithPages(filePath) {
+  const pres = PPT.readFile(filePath);
+  const slides = PPT.utils.to_text(pres) || [];
+  const pages = slides
+    .map((slideText, index) => ({
+      page: index + 1,
+      text: normalizeText(slideText || ''),
+    }))
+    .filter((slide) => slide.text.length > 0);
+
+  const fullText = pages.map((slide) => slide.text).join(' ');
+  return {
+    text: normalizeText(fullText),
+    pages,
+    totalPages: pages.length,
+  };
 }
 
 function chunkTextIntoPages(raw) {
@@ -100,18 +136,19 @@ async function extractPlainTextByExt(filePath, ext) {
   if (['.txt', '.md'].includes(ext)) return extractFromText(filePath);
   if (ext === '.docx') return extractFromDocx(filePath);
   if (ext === '.pptx') return extractFromPptx(filePath);
+  if (ext === '.ppt') return extractFromPpt(filePath);
   return '';
 }
 
 async function extractTextWithPagesByExt(filePath, ext) {
   if (ext === '.pdf') return extractFromPdfWithPages(filePath);
   if (['.txt', '.md'].includes(ext)) return extractFromTextWithPages(filePath);
-  if (ext === '.docx' || ext === '.pptx') {
-    const raw = ext === '.docx'
-      ? await extractFromDocx(filePath)
-      : await extractFromPptx(filePath);
+  if (ext === '.docx') {
+    const raw = await extractFromDocx(filePath);
     return chunkTextIntoPages(raw);
   }
+  if (ext === '.pptx') return extractFromPptxWithPages(filePath);
+  if (ext === '.ppt') return extractFromPptWithPages(filePath);
   return { text: '', pages: [], totalPages: 0 };
 }
 
