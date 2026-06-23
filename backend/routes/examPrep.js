@@ -6,10 +6,17 @@ const router = express.Router();
 
 router.post('/analyze', async (req, res) => {
   try {
-    const { unit_id, paper_id } = req.body;
+    const { unit_id, paper_id, note_ids } = req.body;
     if (!unit_id) return res.status(400).json({ error: 'unit_id is required' });
 
-    const result = await analyzeUnit(unit_id, paper_id || null);
+    const noteIds = Array.isArray(note_ids)
+      ? note_ids.map(Number).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
+
+    const result = await analyzeUnit(unit_id, {
+      paperId: paper_id || null,
+      noteIds,
+    });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -30,8 +37,6 @@ router.get('/:unitId', async (req, res) => {
 
   const unit = await db.prepare(`
     SELECT u.*,
-      (SELECT COUNT(*) FROM topics WHERE unit_id = u.id) AS total_topics,
-      (SELECT COUNT(*) FROM topics WHERE unit_id = u.id AND is_covered = 1) AS covered_topics,
       (SELECT COUNT(*) FROM notes WHERE unit_id = u.id) AS notes_count,
       (SELECT COUNT(*) FROM past_papers WHERE unit_id = u.id) AS papers_count
     FROM units u WHERE u.id = ?
@@ -47,11 +52,9 @@ router.get('/:unitId', async (req, res) => {
 
   res.json({
     unit,
-    coverage_percentage: unit.total_topics
-      ? Math.round((unit.covered_topics / unit.total_topics) * 100)
-      : 0,
     latest_analysis: analysis,
     latest_analysis_at: latest?.created_at || null,
+    selected_note_ids: analysis?.meta?.note_ids || [],
   });
 });
 

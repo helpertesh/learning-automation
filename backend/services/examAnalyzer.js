@@ -7,19 +7,6 @@ function tokenize(text) {
   return text.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
 }
 
-function topicKeywords(topicName) {
-  const words = topicName.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-  return [...new Set(words)];
-}
-
-function textMatchesTopic(text, topicName) {
-  const lower = text.toLowerCase();
-  const keywords = topicKeywords(topicName);
-  if (keywords.length === 0) return false;
-  const hits = keywords.filter((k) => lower.includes(k)).length;
-  return hits >= Math.max(1, Math.ceil(keywords.length * 0.5));
-}
-
 function extractQuestions(paperText) {
   const lines = paperText.split(/\n+/).map((l) => l.trim()).filter(Boolean);
   const questions = [];
@@ -53,8 +40,8 @@ function extractQuestions(paperText) {
   return questions.map((q, i) => ({ ...q, index: i + 1 }));
 }
 
-function findSolutionInNotes(topicName, notesTexts) {
-  const keywords = topicKeywords(topicName);
+function findSolutionForQuestion(questionText, notesTexts) {
+  const keywords = [...new Set(tokenize(questionText))].filter((k) => k.length > 3);
   let best = { score: 0, excerpt: '', source: '' };
 
   for (const note of notesTexts) {
@@ -70,7 +57,7 @@ function findSolutionInNotes(topicName, notesTexts) {
 
   if (best.score === 0) {
     return {
-      excerpt: 'No direct match in your notes. Review the topic section and add more detailed notes.',
+      excerpt: 'No direct match in your selected notes. Review the related section in your notes or add more detail.',
       source: null,
       confidence: 'low',
     };
@@ -79,14 +66,24 @@ function findSolutionInNotes(topicName, notesTexts) {
   return {
     excerpt: best.excerpt,
     source: best.source,
-    confidence: best.score >= 2 ? 'high' : 'medium',
+    confidence: best.score >= 3 ? 'high' : best.score >= 1 ? 'medium' : 'low',
   };
 }
 
-async function loadNotesTexts(unitId) {
-  const notes = await db.prepare('SELECT * FROM notes WHERE unit_id = ?').all(unitId);
-  const results = [];
+function inferTopicLabel(questionText) {
+  const words = tokenize(questionText).filter((w) => w.length > 4);
+  return words.slice(0, 3).join(' ') || 'General';
+}
 
+async function loadNotesTexts(unitId, noteIds) {
+  if (!noteIds?.length) return [];
+
+  const placeholders = noteIds.map(() => '?').join(',');
+  const notes = await db.prepare(`
+    SELECT * FROM notes WHERE unit_id = ? AND id IN (${placeholders})
+  `).all(unitId, ...noteIds);
+
+  const results = [];
   for (const note of notes) {
     try {
       const filePath = await storage.getReadablePath(storage.BUCKETS.NOTES, note.filename);
@@ -104,34 +101,36 @@ async function loadPaperText(paper) {
   return normalizeText(await extractText(filePath));
 }
 
-async function analyzeWithAI(unit, coveredTopics, notesTexts, paperAnalyses) {
+async function analyzeWithAI(unit, notesTexts, papersWithText) {
   if (!isAIConfigured()) return null;
 
-  const prompt = `You are a study assistant. Analyze exam preparation for "${unit.name}".
+  const prompt = `You are a study assistant preparing a student for exams in "${unit.name}".
 
-COVERED TOPICS (only these are in scope):
-${coveredTopics.map((t) => `- ${t.name}`).join('\n')}
+STUDY NOTES (use ONLY these notes for solutions — cite the note title):
+${notesTexts.map((n) => `[${n.title}]:\n${n.text.slice(0, 2500)}`).join('\n\n')}
 
-NOTES EXCERPTS:
-${notesTexts.slice(0, 5).map((n) => `[${n.title}]: ${n.text.slice(0, 800)}`).join('\n\n')}
+PAST EXAM PAPERS (extract real exam questions from these):
+${papersWithText.map((p) => `[${p.title}${p.year ? ` (${p.year})` : ''}]:\n${p.text.slice(0, 2500)}`).join('\n\n')}
 
-PAST PAPER EXCERPTS:
-${paperAnalyses.map((p) => `[${p.paperTitle}]: ${p.text.slice(0, 1200)}`).join('\n\n')}
+Tasks:
+1. Find exam-style questions from the past papers (use the actual question wording where possible).
+2. For each question, write a detailed solution using ONLY the study notes above.
+3. Flag topics that appear in papers but are weak or missing in the selected notes.
 
 Return JSON only with this shape:
 {
-  "summary": "brief study advice",
+  "summary": "brief exam prep advice",
   "likely_questions": [
     {
-      "question": "predicted question text",
-      "topic": "matched topic",
-      "from_paper": "paper title or General",
-      "solution": "answer drawn from notes",
-      "note_source": "note title",
+      "question": "question text from the paper",
+      "topic": "short topic label",
+      "from_paper": "paper title",
+      "solution": "detailed answer drawn from the notes",
+      "note_source": "note title used for the solution",
       "priority": "high|medium|low"
     }
   ],
-  "gaps": ["topics covered but weak in notes"],
+  "gaps": ["areas weak or missing in the selected notes"],
   "study_tips": ["actionable tip"]
 }`;
 
@@ -142,7 +141,7 @@ Return JSON only with this shape:
   return result;
 }
 
-function analyzeRuleBased(unit, coveredTopics, notesTexts, papersWithText) {
+function analyzeRuleBased(unit, notesTexts, papersWithText) {
   const likelyQuestions = [];
   const gaps = [];
   const seen = new Set();
@@ -151,89 +150,57 @@ function analyzeRuleBased(unit, coveredTopics, notesTexts, papersWithText) {
     const questions = extractQuestions(paper.text);
 
     for (const q of questions) {
-      const matchedTopics = coveredTopics.filter((t) => textMatchesTopic(q.raw, t.name));
-      if (matchedTopics.length === 0) continue;
+      const key = q.raw.slice(0, 100);
+      if (seen.has(key)) continue;
+      seen.add(key);
 
-      for (const topic of matchedTopics) {
-        const key = `${topic.name}::${q.raw.slice(0, 80)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        const solution = findSolutionInNotes(topic.name, notesTexts);
-        likelyQuestions.push({
-          question: q.raw.slice(0, 400),
-          topic: topic.name,
-          from_paper: paper.title,
-          solution: solution.excerpt,
-          note_source: solution.source,
-          priority: solution.confidence === 'high' ? 'high' : 'medium',
-          confidence: solution.confidence,
-        });
-      }
-    }
-  }
-
-  for (const topic of coveredTopics) {
-    const solution = findSolutionInNotes(topic.name, notesTexts);
-    if (solution.confidence === 'low') {
-      gaps.push(`"${topic.name}" is marked covered but has weak note coverage — add more notes.`);
-    }
-  }
-
-  if (likelyQuestions.length === 0 && coveredTopics.length > 0) {
-    for (const topic of coveredTopics.slice(0, 5)) {
-      const solution = findSolutionInNotes(topic.name, notesTexts);
+      const solution = findSolutionForQuestion(q.raw, notesTexts);
       likelyQuestions.push({
-        question: `Explain the key concepts of ${topic.name} as they might appear in an exam.`,
-        topic: topic.name,
-        from_paper: 'Generated from syllabus',
+        question: q.raw.slice(0, 500),
+        topic: inferTopicLabel(q.raw),
+        from_paper: paper.title,
         solution: solution.excerpt,
         note_source: solution.source,
-        priority: 'medium',
+        priority: solution.confidence === 'high' ? 'high' : solution.confidence === 'medium' ? 'medium' : 'low',
         confidence: solution.confidence,
       });
     }
   }
 
-  const coveragePct = unit.total_topics
-    ? Math.round((unit.covered_topics / unit.total_topics) * 100)
-    : 0;
+  const lowConfidence = likelyQuestions.filter((q) => q.confidence === 'low').length;
+  if (lowConfidence > 0) {
+    gaps.push(`${lowConfidence} question(s) had weak matches in your selected notes — consider adding or selecting more notes.`);
+  }
+
+  if (likelyQuestions.length === 0 && papersWithText.length > 0) {
+    gaps.push('Could not extract clear questions from the past papers. Try uploading clearer PDF or text papers.');
+  }
 
   return {
     mode: 'rule-based',
-    summary: `Analyzed ${papersWithText.length} past paper(s) against ${coveredTopics.length} covered topic(s) (${coveragePct}% syllabus complete). Found ${likelyQuestions.length} likely exam questions with note-based solutions.`,
-    coverage: {
-      total_topics: unit.total_topics || coveredTopics.length,
-      covered_topics: unit.covered_topics || coveredTopics.length,
-      percentage: coveragePct,
-    },
-    likely_questions: likelyQuestions.slice(0, 20),
+    summary: `Analyzed ${papersWithText.length} past paper(s) using ${notesTexts.length} selected note(s). Found ${likelyQuestions.length} exam questions with note-based solutions.`,
+    likely_questions: likelyQuestions.slice(0, 25),
     gaps: gaps.slice(0, 8),
     study_tips: [
-      'Focus on high-priority questions where your notes have strong matches.',
-      'Fill gaps by uploading more notes for weak topics before the exam.',
-      'Practice answering predicted questions without looking at solutions first.',
-      coveragePct < 70 ? 'Complete more syllabus topics before attempting full past papers.' : 'Good progress — drill the high-priority questions repeatedly.',
+      'Practice answering each predicted question without looking at the solution first.',
+      'Focus on high-priority questions that matched strongly with your notes.',
+      lowConfidence > 0 ? 'Select more notes or upload additional material for weak matches.' : 'Good note coverage — drill the high-priority questions repeatedly.',
+      papersWithText.length === 0 ? 'Upload past papers to get real exam questions.' : 'Compare your answers against the note-based solutions.',
     ],
   };
 }
 
-async function analyzeUnit(unitId, paperId = null) {
-  const unit = await db.prepare(`
-    SELECT u.*,
-      (SELECT COUNT(*) FROM topics WHERE unit_id = u.id) AS total_topics,
-      (SELECT COUNT(*) FROM topics WHERE unit_id = u.id AND is_covered = 1) AS covered_topics
-    FROM units u WHERE u.id = ?
-  `).get(unitId);
-
+async function analyzeUnit(unitId, { paperId = null, noteIds = [] } = {}) {
+  const unit = await db.prepare('SELECT * FROM units WHERE id = ?').get(unitId);
   if (!unit) throw new Error('Unit not found');
 
-  const coveredTopics = await db.prepare(`
-    SELECT * FROM topics WHERE unit_id = ? AND is_covered = 1 ORDER BY sort_order, name
-  `).all(unitId);
+  if (!noteIds.length) {
+    throw new Error('Select at least one note to use for exam prep.');
+  }
 
-  if (coveredTopics.length === 0) {
-    throw new Error('Mark at least one topic as covered before running exam prep analysis.');
+  const notesTexts = await loadNotesTexts(unitId, noteIds);
+  if (notesTexts.length === 0) {
+    throw new Error('Could not read text from the selected notes. Try PDF, DOCX, PPT, PPTX, TXT, or MD files.');
   }
 
   let papers;
@@ -243,9 +210,8 @@ async function analyzeUnit(unitId, paperId = null) {
     papers = await db.prepare('SELECT * FROM past_papers WHERE unit_id = ? ORDER BY year DESC').all(unitId);
   }
 
-  const notesTexts = await loadNotesTexts(unitId);
-  if (notesTexts.length === 0) {
-    throw new Error('Upload notes for this unit first — solutions are drawn from your notes.');
+  if (papers.length === 0) {
+    throw new Error('Upload past papers for this unit first — questions are extracted from them.');
   }
 
   const papersWithText = [];
@@ -254,29 +220,27 @@ async function analyzeUnit(unitId, paperId = null) {
     if (text) papersWithText.push({ ...paper, text });
   }
 
+  if (papersWithText.length === 0) {
+    throw new Error('Could not extract text from the past papers. Try PDF or text-based files.');
+  }
+
   let analysis;
-  const aiResult = await analyzeWithAI(unit, coveredTopics, notesTexts, papersWithText);
+  const aiResult = await analyzeWithAI(unit, notesTexts, papersWithText);
   if (aiResult) {
     analysis = {
       mode: 'ai',
       ...aiResult,
-      coverage: {
-        total_topics: unit.total_topics,
-        covered_topics: unit.covered_topics,
-        percentage: unit.total_topics
-          ? Math.round((unit.covered_topics / unit.total_topics) * 100)
-          : 0,
-      },
     };
   } else {
-    analysis = analyzeRuleBased(unit, coveredTopics, notesTexts, papersWithText);
+    analysis = analyzeRuleBased(unit, notesTexts, papersWithText);
   }
 
   analysis.meta = {
     unit_id: unitId,
     unit_name: unit.name,
+    note_ids: noteIds,
     papers_analyzed: papersWithText.map((p) => ({ id: p.id, title: p.title, year: p.year })),
-    notes_used: notesTexts.map((n) => n.title),
+    notes_used: notesTexts.map((n) => ({ id: n.id, title: n.title })),
     analyzed_at: new Date().toISOString(),
   };
 
