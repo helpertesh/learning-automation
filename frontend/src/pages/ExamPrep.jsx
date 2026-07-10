@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Brain, Check, Sparkles, AlertCircle, BookOpen, Loader2, FileText,
 } from 'lucide-react';
@@ -20,6 +21,8 @@ export default function ExamPrep() {
   const [prepData, setPrepData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [creatingQuiz, setCreatingQuiz] = useState(false);
+  const [noteExcerpt, setNoteExcerpt] = useState(null);
 
   const loadUnits = () => api.units.list().then(setUnits);
 
@@ -90,6 +93,40 @@ export default function ExamPrep() {
       alert(err.message);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleViewNote = async (ref) => {
+    if (!ref.note_id) return;
+    const pages = String(ref.pages || '1');
+    const firstPage = pages.includes('-') ? pages.split('-')[0].trim() : pages.split(',')[0].trim();
+    const lastPage = pages.includes('-') ? pages.split('-')[1].trim() : firstPage;
+    try {
+      const excerpt = await api.notes.getPages(ref.note_id, firstPage, lastPage);
+      setNoteExcerpt(excerpt);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handlePracticeQuiz = async () => {
+    setCreatingQuiz(true);
+    try {
+      const papers = await api.pastPapers.list(selectedUnit);
+      const paperWithQuestions = papers.find((p) => p.question_count > 0) || papers[0];
+      if (!paperWithQuestions) {
+        alert('Upload a past paper first.');
+        return;
+      }
+      if (!paperWithQuestions.question_count) {
+        await api.pastPapers.analyze(paperWithQuestions.id, { note_ids: selectedNoteIds });
+      }
+      const quiz = await api.pastPapers.createQuiz(paperWithQuestions.id);
+      window.location.href = `/quizzes/${quiz.id}`;
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCreatingQuiz(false);
     }
   };
 
@@ -227,6 +264,17 @@ export default function ExamPrep() {
 
             {analysis && (
               <div className="mt-4 space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePracticeQuiz}
+                    disabled={creatingQuiz || !analysis.likely_questions?.length}
+                    className="btn-primary text-sm"
+                  >
+                    {creatingQuiz ? <><Loader2 size={14} className="animate-spin" /> Creating quiz...</> : <><Brain size={14} /> Practice as Quiz</>}
+                  </button>
+                  <Link to="/past-papers" className="btn-secondary text-sm">Manage Past Papers</Link>
+                </div>
                 <div className="rounded-lg bg-indigo-500/5 border border-indigo-500/20 p-4">
                   <p className="text-sm text-indigo-200">{analysis.summary}</p>
                   <p className="mt-2 text-xs text-slate-500">
@@ -278,6 +326,21 @@ export default function ExamPrep() {
                             {q.from_paper && <span className="text-xs text-slate-600">from {q.from_paper}</span>}
                           </div>
                           <p className="text-sm font-medium text-white">{q.question}</p>
+                          {q.note_references?.length > 0 && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <BookOpen size={12} className="text-indigo-400" />
+                              {q.note_references.map((ref, ri) => (
+                                <button
+                                  key={ri}
+                                  type="button"
+                                  onClick={() => handleViewNote(ref)}
+                                  className="rounded bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20"
+                                >
+                                  {ref.note_title} — p.{ref.pages}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <div className="mt-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10 p-3">
                             <p className="text-xs font-medium text-emerald-400 mb-1">
                               Solution {q.note_source ? `· from "${q.note_source}"` : ''}
@@ -289,6 +352,18 @@ export default function ExamPrep() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {noteExcerpt && (
+              <div className="mt-4 rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-medium text-indigo-300">
+                    {noteExcerpt.note_title} — pages {noteExcerpt.from}{noteExcerpt.to !== noteExcerpt.from ? `–${noteExcerpt.to}` : ''}
+                  </p>
+                  <button type="button" onClick={() => setNoteExcerpt(null)} className="text-xs text-slate-500 hover:text-white">Close</button>
+                </div>
+                <p className="text-sm text-slate-300 whitespace-pre-wrap max-h-48 overflow-y-auto">{noteExcerpt.excerpt}</p>
               </div>
             )}
           </section>

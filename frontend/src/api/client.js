@@ -24,12 +24,26 @@ export const api = {
     summarize: (id) => request(`/notes/${id}/summarize`, { method: 'POST' }),
     getSummary: (id) => request(`/notes/${id}/summary`),
     getQuizzes: (id) => request(`/notes/${id}/quizzes`),
+    getPages: (id, from, to) => {
+      const params = new URLSearchParams();
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const q = params.toString();
+      return request(`/notes/${id}/pages${q ? `?${q}` : ''}`);
+    },
   },
   pastPapers: {
     list: (unitId) => request(`/past-papers${unitId ? `?unit_id=${unitId}` : ''}`),
     upload: (formData) => request('/past-papers', { method: 'POST', body: formData }),
     delete: (id) => request(`/past-papers/${id}`, { method: 'DELETE' }),
     downloadUrl: (id) => `${BASE}/past-papers/${id}/download`,
+    analyze: (id, body) => request(`/past-papers/${id}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+    getQuestions: (id) => request(`/past-papers/${id}/questions`),
+    createQuiz: (id) => request(`/past-papers/${id}/create-quiz`, { method: 'POST' }),
   },
   assignments: {
     list: (params = {}) => {
@@ -89,6 +103,7 @@ export const api = {
     },
     get: (id) => request(`/quizzes/${id}`),
     generate: (noteId) => request('/quizzes/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note_id: noteId }) }),
+    generateFromPaper: (paperId) => request('/quizzes/generate-from-paper', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paper_id: paperId }) }),
     submit: (id, answers) => request(`/quizzes/${id}/submit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers }) }),
     weakTopics: (unitId) => request(`/quizzes/weak-topics${unitId ? `?unit_id=${unitId}` : ''}`),
     attempts: (id) => request(`/quizzes/${id}/attempts`),

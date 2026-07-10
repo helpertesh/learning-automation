@@ -2,6 +2,7 @@ const db = require('../db');
 const storage = require('./storage');
 const { extractText, normalizeText, splitIntoChunks } = require('./textExtractor');
 const { chatJSON, isAIConfigured, getLastAIError } = require('./openai');
+const { loadUnitNotesWithPages, findNotePageRefs } = require('./noteAi');
 
 function tokenize(text) {
   return text.toLowerCase().match(/[a-z0-9]{3,}/g) || [];
@@ -127,6 +128,7 @@ Return JSON only with this shape:
       "from_paper": "paper title",
       "solution": "detailed answer drawn from the notes",
       "note_source": "note title used for the solution",
+      "note_references": [{ "note_title": "note title", "pages": "12-14" }],
       "priority": "high|medium|low"
     }
   ],
@@ -141,7 +143,7 @@ Return JSON only with this shape:
   return result;
 }
 
-function analyzeRuleBased(unit, notesTexts, papersWithText) {
+function analyzeRuleBased(unit, notesTexts, papersWithText, notesWithPages = []) {
   const likelyQuestions = [];
   const gaps = [];
   const seen = new Set();
@@ -155,12 +157,17 @@ function analyzeRuleBased(unit, notesTexts, papersWithText) {
       seen.add(key);
 
       const solution = findSolutionForQuestion(q.raw, notesTexts);
+      const noteRefs = notesWithPages.length
+        ? findNotePageRefs(q.raw, notesWithPages)
+        : [];
+
       likelyQuestions.push({
         question: q.raw.slice(0, 500),
         topic: inferTopicLabel(q.raw),
         from_paper: paper.title,
         solution: solution.excerpt,
         note_source: solution.source,
+        note_references: noteRefs,
         priority: solution.confidence === 'high' ? 'high' : solution.confidence === 'medium' ? 'medium' : 'low',
         confidence: solution.confidence,
       });
@@ -203,6 +210,10 @@ async function analyzeUnit(unitId, { paperId = null, noteIds = [] } = {}) {
     throw new Error('Could not read text from the selected notes. Try PDF, DOCX, PPT, PPTX, TXT, or MD files.');
   }
 
+  let notesWithPages = await loadUnitNotesWithPages(unitId);
+  const noteIdSet = new Set(noteIds.map(Number));
+  notesWithPages = notesWithPages.filter((n) => noteIdSet.has(n.id));
+
   let papers;
   if (paperId) {
     papers = await db.prepare('SELECT * FROM past_papers WHERE id = ? AND unit_id = ?').all(paperId, unitId);
@@ -230,9 +241,15 @@ async function analyzeUnit(unitId, { paperId = null, noteIds = [] } = {}) {
     analysis = {
       mode: 'ai',
       ...aiResult,
+      likely_questions: (aiResult.likely_questions || []).map((q) => ({
+        ...q,
+        note_references: q.note_references?.length
+          ? q.note_references
+          : findNotePageRefs(`${q.question} ${q.solution}`, notesWithPages),
+      })),
     };
   } else {
-    analysis = analyzeRuleBased(unit, notesTexts, papersWithText);
+    analysis = analyzeRuleBased(unit, notesTexts, papersWithText, notesWithPages);
   }
 
   analysis.meta = {
@@ -251,4 +268,11 @@ async function analyzeUnit(unitId, { paperId = null, noteIds = [] } = {}) {
   return { id: result.lastInsertRowid, ...analysis };
 }
 
-module.exports = { analyzeUnit };
+module.exports = {
+  analyzeUnit,
+  extractQuestions,
+  findSolutionForQuestion,
+  inferTopicLabel,
+  loadNotesTexts,
+  loadPaperText,
+};

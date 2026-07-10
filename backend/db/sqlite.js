@@ -237,6 +237,19 @@ async function init() {
       level TEXT DEFAULT 'intermediate',
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS paper_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      paper_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      question_text TEXT NOT NULL,
+      topic TEXT,
+      solution_text TEXT,
+      note_refs_json TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (paper_id) REFERENCES past_papers(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+    );
     CREATE TABLE IF NOT EXISTS daily_it_lessons (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lesson_date TEXT NOT NULL,

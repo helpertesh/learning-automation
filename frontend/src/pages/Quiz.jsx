@@ -5,15 +5,20 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 
-function NoteReferences({ refs }) {
+function NoteReferences({ refs, onViewNote }) {
   if (!refs?.length) return null;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <BookOpen size={12} className="text-indigo-400 shrink-0" />
       {refs.map((ref, i) => (
-        <span key={i} className="rounded bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-300">
+        <button
+          key={i}
+          type="button"
+          onClick={() => onViewNote?.(ref)}
+          className="rounded bg-indigo-500/10 px-2 py-0.5 text-xs text-indigo-300 hover:bg-indigo-500/20"
+        >
           {ref.note_title} — p.{ref.pages}
-        </span>
+        </button>
       ))}
     </div>
   );
@@ -26,6 +31,7 @@ export default function QuizPage() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [noteExcerpt, setNoteExcerpt] = useState(null);
 
   useEffect(() => {
     api.quizzes.get(id)
@@ -36,6 +42,19 @@ export default function QuizPage() {
 
   const setAnswer = (questionId, value) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
+
+  const handleViewNote = async (ref) => {
+    if (!ref.note_id) return;
+    const pages = String(ref.pages || '1');
+    const firstPage = pages.includes('-') ? pages.split('-')[0].trim() : pages.split(',')[0].trim();
+    const lastPage = pages.includes('-') ? pages.split('-')[1].trim() : firstPage;
+    try {
+      const excerpt = await api.notes.getPages(ref.note_id, firstPage, lastPage);
+      setNoteExcerpt(excerpt);
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -74,8 +93,8 @@ export default function QuizPage() {
   if (result) {
     return (
       <div className="mx-auto max-w-2xl space-y-6">
-        <Link to="/notes" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
-          <ArrowLeft size={16} /> Back to Notes
+        <Link to="/past-papers" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
+          <ArrowLeft size={16} /> Back to Past Papers
         </Link>
 
         <div className="card p-6 text-center">
@@ -125,7 +144,7 @@ export default function QuizPage() {
                   {r.source_paper && (
                     <p className="mt-1 text-xs text-purple-400">From past paper: {r.source_paper}</p>
                   )}
-                  <NoteReferences refs={r.note_references} />
+                  <NoteReferences refs={r.note_references} onViewNote={handleViewNote} />
                   <p className="mt-2 text-sm text-slate-400">Your answer: {r.user_answer || '(blank)'}</p>
                   {!r.is_correct && (
                     <p className="mt-1 text-sm text-emerald-400">Correct: {r.correct_answer}</p>
@@ -137,20 +156,32 @@ export default function QuizPage() {
           ))}
         </div>
 
+        {noteExcerpt && (
+          <div className="card border-indigo-500/30 bg-indigo-500/5 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium text-indigo-300">
+                {noteExcerpt.note_title} — pages {noteExcerpt.from}{noteExcerpt.to !== noteExcerpt.from ? `–${noteExcerpt.to}` : ''}
+              </p>
+              <button type="button" onClick={() => setNoteExcerpt(null)} className="text-xs text-slate-500 hover:text-white">Close</button>
+            </div>
+            <p className="text-sm text-slate-300 whitespace-pre-wrap max-h-64 overflow-y-auto">{noteExcerpt.excerpt}</p>
+          </div>
+        )}
+
         <div className="flex gap-3">
-          <button onClick={() => { setResult(null); setAnswers({}); }} className="btn-secondary">
+          <button onClick={() => { setResult(null); setAnswers({}); setNoteExcerpt(null); }} className="btn-secondary">
             Retake Quiz
           </button>
-          <Link to="/notes" className="btn-primary">Back to Notes</Link>
+          <Link to="/past-papers" className="btn-primary">Back to Past Papers</Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <Link to="/notes" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
-        <ArrowLeft size={16} /> Back to Notes
+    <div className="mx-auto max-w-3xl space-y-6">
+      <Link to="/past-papers" className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white">
+        <ArrowLeft size={16} /> Back to Past Papers
       </Link>
 
       <div>
@@ -164,9 +195,21 @@ export default function QuizPage() {
       <div className="card border-purple-500/20 bg-purple-500/5 p-3 flex items-center gap-2">
         <Sparkles size={16} className="text-purple-400" />
         <p className="text-sm text-purple-300">
-          Written-answer questions (university exam style). Type your full answers below.
+          Revision quiz from your exam paper. Click note references to read the relevant pages while you answer.
         </p>
       </div>
+
+      {noteExcerpt && (
+        <div className="card border-indigo-500/30 bg-indigo-500/5 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium text-indigo-300">
+              {noteExcerpt.note_title} — pages {noteExcerpt.from}{noteExcerpt.to !== noteExcerpt.from ? `–${noteExcerpt.to}` : ''}
+            </p>
+            <button type="button" onClick={() => setNoteExcerpt(null)} className="text-xs text-slate-500 hover:text-white">Close</button>
+          </div>
+          <p className="text-sm text-slate-300 whitespace-pre-wrap max-h-48 overflow-y-auto">{noteExcerpt.excerpt}</p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {quiz.questions.map((q, i) => (
@@ -181,7 +224,7 @@ export default function QuizPage() {
                 <FileText size={11} /> From: {q.source_paper}
               </p>
             )}
-            <NoteReferences refs={q.note_references} />
+            <NoteReferences refs={q.note_references} onViewNote={handleViewNote} />
 
             <textarea
               className="input mt-3 min-h-[120px]"

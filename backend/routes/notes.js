@@ -3,7 +3,7 @@ const path = require('path');
 const db = require('../db');
 const { uploadNotes } = require('../middleware/upload');
 const storage = require('../services/storage');
-const { summarizeNote, getNoteSummary } = require('../services/noteAi');
+const { summarizeNote, getNoteSummary, getNotePageExcerpt } = require('../services/noteAi');
 
 const router = express.Router();
 
@@ -94,6 +94,19 @@ router.get('/:id/quizzes', async (req, res, next) => {
     res.json(quizzes);
   } catch (err) {
     next(err);
+  }
+});
+
+router.get('/:id/pages', async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+    const result = await getNotePageExcerpt(Number(req.params.id), {
+      from: from ? Number(from) : 1,
+      to: to ? Number(to) : null,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

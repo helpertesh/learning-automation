@@ -40,6 +40,18 @@ router.get('/', async (req, res) => {
   res.json(quizzes);
 });
 
+router.post('/generate-from-paper', async (req, res, next) => {
+  try {
+    const { paper_id } = req.body;
+    if (!paper_id) return res.status(400).json({ error: 'paper_id is required' });
+    const { createQuizFromPaper } = require('../services/paperRevision');
+    const quiz = await createQuizFromPaper(Number(paper_id));
+    res.status(201).json(quiz);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.post('/generate', async (req, res, next) => {
   try {
     const { note_id } = req.body;

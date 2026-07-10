@@ -555,6 +555,46 @@ Return JSON: { "is_correct": true/false, "score": 0-1, "feedback": "brief constr
   };
 }
 
+function parsePageRange(pagesStr) {
+  if (!pagesStr) return [];
+  const pages = [];
+  for (const part of String(pagesStr).split(',')) {
+    const trimmed = part.trim();
+    if (trimmed.includes('-')) {
+      const [start, end] = trimmed.split('-').map(Number);
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        for (let p = start; p <= end; p++) pages.push(p);
+      }
+    } else {
+      const n = Number(trimmed);
+      if (Number.isFinite(n)) pages.push(n);
+    }
+  }
+  return [...new Set(pages)].sort((a, b) => a - b);
+}
+
+async function getNotePageExcerpt(noteId, { from = 1, to = null } = {}) {
+  const note = await db.prepare('SELECT * FROM notes WHERE id = ?').get(noteId);
+  if (!note) throw new Error('Note not found');
+
+  const noteWithPages = await loadNoteWithPages(note);
+  const startPage = Math.max(1, Number(from) || 1);
+  const endPage = to ? Number(to) : startPage;
+
+  const pages = (noteWithPages.pages || []).filter(
+    (p) => p.page >= startPage && p.page <= endPage,
+  );
+
+  return {
+    note_id: noteId,
+    note_title: note.title,
+    from: startPage,
+    to: endPage,
+    pages: pages.map((p) => ({ page: p.page, text: p.text })),
+    excerpt: pages.map((p) => p.text).join('\n\n').slice(0, 4000),
+  };
+}
+
 async function getNoteSummary(noteId) {
   const row = await db.prepare('SELECT * FROM note_summaries WHERE note_id = ?').get(noteId);
   if (!row) return null;
@@ -566,4 +606,14 @@ async function getNoteSummary(noteId) {
   };
 }
 
-module.exports = { summarizeNote, generateQuiz, getQuiz, markQuiz, getNoteSummary };
+module.exports = {
+  summarizeNote,
+  generateQuiz,
+  getQuiz,
+  markQuiz,
+  getNoteSummary,
+  getNotePageExcerpt,
+  loadUnitNotesWithPages,
+  findNotePageRefs,
+  parsePageRange,
+};
